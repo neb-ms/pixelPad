@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import platform
+import subprocess
 from configparser import ConfigParser
 from pathlib import Path
 from typing import List, Optional, Sequence
@@ -50,6 +53,9 @@ class NoteManager:
 
     def get_repository_path(self) -> Optional[Path]:
         return self._repository_path
+
+    def require_repository(self) -> Path:
+        return self._ensure_repository()
 
     def set_repository_path(self, path: Path | str) -> Path:
         resolved = Path(path).expanduser().resolve()
@@ -149,3 +155,15 @@ class NoteManager:
         note_path.parent.mkdir(parents=True, exist_ok=True)
         note_path.touch(exist_ok=overwrite)
         return note_path
+
+    def open_repository(self) -> None:
+        repo = self._ensure_repository()
+        system = platform.system()
+        repo_str = str(repo)
+        if system == "Windows":
+            os.startfile(repo_str)  # type: ignore[attr-defined]
+            return
+        if system == "Darwin":
+            subprocess.run(["open", repo_str], check=False)
+            return
+        subprocess.run(["xdg-open", repo_str], check=False)

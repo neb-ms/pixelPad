@@ -1,3 +1,4 @@
+from .main_window import PixelPadMainWindow
 from .note_manager import (
     NoteManager,
     NotesRepositoryNotConfiguredError,
@@ -5,6 +6,7 @@ from .note_manager import (
 )
 
 __all__ = [
+    "PixelPadMainWindow",
     "NoteManager",
     "NotesRepositoryNotConfiguredError",
     "UnsupportedNoteExtensionError",
