@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QSignalBlocker, QSize, QTimer, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QShortcut, QColor
 from PySide6.QtWidgets import (
     QApplication,
+    QColorDialog,
     QFileDialog,
     QInputDialog,
     QLabel,
@@ -34,6 +35,9 @@ class PixelPadMainWindow(QMainWindow):
         super().__init__()
         self._note_manager = note_manager
         self._current_note: Optional[Path] = None
+        self._current_theme = self._note_manager.get_theme()
+        self._last_note_color = "#5E9CFF"
+        self._last_notebook_color = "#FFB74D"
 
         self.setWindowTitle("PixelPad")
         self.resize(1024, 640)
@@ -114,8 +118,6 @@ class PixelPadMainWindow(QMainWindow):
         self._delete_notebook_action.triggered.connect(self._delete_current_notebook)
         self._editor.document().modificationChanged.connect(self._update_window_title)
 
-        self._current_theme = "dark"
-
         if not self._ensure_repository_configured():
             QTimer.singleShot(0, self.close)
             return
@@ -181,9 +183,18 @@ class PixelPadMainWindow(QMainWindow):
             if self._ensure_repository_configured():
                 self._refresh_recent_notes()
             return
+
+
         repo = self._note_manager.get_repository_path()
+        note_colors = self._note_manager.get_note_colors()
+        notebook_colors = self._note_manager.get_notebook_colors()
         self._sidebar.set_repository_path(repo)
-        self._sidebar.set_content(notes=notes, notebooks=notebooks)
+        self._sidebar.set_content(
+            notes=notes,
+            notebooks=notebooks,
+            note_colors=note_colors,
+            notebook_colors=notebook_colors,
+        )
         if self._current_note:
             self._sidebar.set_current_note_path(self._current_note)
         else:
@@ -213,7 +224,8 @@ class PixelPadMainWindow(QMainWindow):
         app = QApplication.instance()
         if not app:
             return
-        self._current_theme = "light" if light_mode else "dark"
+        requested_theme = "light" if light_mode else "dark"
+        self._current_theme = self._note_manager.set_theme(requested_theme)
         apply_theme(app, self._current_theme)
         self._editor.refresh_line_numbers()
         self._refresh_actions()
@@ -256,11 +268,20 @@ class PixelPadMainWindow(QMainWindow):
         if not cleaned:
             QMessageBox.warning(self, "Invalid Name", "Notebook name cannot be empty.")
             return
+        color = QColorDialog.getColor(QColor(self._last_notebook_color), self, "Notebook Color")
+        if not color.isValid():
+            return
+        color_hex = color.name(QColor.HexRgb).upper()
         try:
-            notebook_path = self._note_manager.create_notebook(cleaned, parent_directory)
+            notebook_path = self._note_manager.create_notebook(
+                cleaned,
+                parent_directory,
+                color=color_hex,
+            )
         except (ValueError, FileExistsError, NotADirectoryError) as error:
             QMessageBox.warning(self, "Cannot Create Notebook", str(error))
             return
+        self._last_notebook_color = color_hex
         self.statusBar().showMessage(f"Notebook created: {notebook_path.relative_to(repo)}")
         self._refresh_recent_notes()
         self._sidebar.set_current_notebook_path(notebook_path)
@@ -288,11 +309,7 @@ class PixelPadMainWindow(QMainWindow):
         if not cleaned:
             QMessageBox.warning(self, "Invalid Name", "Notebook name cannot be empty.")
             return
-        target = notebook_path.parent / cleaned
-        if target == notebook_path:
-            return
-        if target.exists():
-            QMessageBox.warning(self, "Cannot Rename", f"A folder named '{cleaned}' already exists.")
+        if cleaned == notebook_path.name:
             return
         current_note_relative = None
         if self._current_note is not None:
@@ -301,7 +318,13 @@ class PixelPadMainWindow(QMainWindow):
             except ValueError:
                 current_note_relative = None
         try:
-            notebook_path.rename(target)
+            target = self._note_manager.rename_notebook(notebook_path, cleaned)
+        except FileExistsError:
+            QMessageBox.warning(self, "Cannot Rename", f"A folder named '{cleaned}' already exists.")
+            return
+        except ValueError as error:
+            QMessageBox.warning(self, "Cannot Rename", str(error))
+            return
         except OSError as error:
             QMessageBox.critical(self, "Unable to Rename Notebook", str(error))
             return
@@ -509,12 +532,22 @@ class PixelPadMainWindow(QMainWindow):
             return
         if not self._auto_save_current_note():
             return
+        color = QColorDialog.getColor(QColor(self._last_note_color), self, "Note Color")
+        if not color.isValid():
+            return
+        color_hex = color.name(QColor.HexRgb).upper()
         container = self._sidebar.current_container_path()
         try:
-            path = self._note_manager.create_note(cleaned, extension, directory=container)
+            path = self._note_manager.create_note(
+                cleaned,
+                extension,
+                directory=container,
+                color=color_hex,
+            )
         except (UnsupportedNoteExtensionError, ValueError, FileExistsError) as error:
             QMessageBox.warning(self, "Cannot Create Note", str(error))
             return
+        self._last_note_color = color_hex
         self._load_note(path)
         self._editor.setFocus()
 

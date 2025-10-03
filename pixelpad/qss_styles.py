@@ -24,6 +24,7 @@ class ThemePalette:
     accent_alt: str
     highlight: str
     highlight_text: str
+    tree_selection_border: str
 
 
 def _build_stylesheet(palette: ThemePalette) -> str:
@@ -100,6 +101,34 @@ def _build_stylesheet(palette: ThemePalette) -> str:
     }}
     QLineEdit::placeholder {{
         color: {palette.text_muted};
+    }}
+
+    QTreeWidget#sidebarTree {{
+        background-color: transparent;
+        border: none;
+    }}
+    QTreeWidget#sidebarTree::item {{
+        margin: 2px 6px 2px 2px;
+        padding: 4px 6px;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        outline: none;
+    }}
+    QTreeWidget#sidebarTree::item:selected,
+    QTreeWidget#sidebarTree::item:selected:active,
+    QTreeWidget#sidebarTree::item:selected:!active {{
+        background-color: transparent;
+        border-color: {palette.tree_selection_border};
+        color: {palette.text};
+        outline: none;
+    }}
+    QTreeWidget#sidebarTree::item:hover {{
+        border-color: {palette.tree_selection_border};
+        background-color: rgba(255, 255, 255, 0.04);
+        outline: none;
+    }}
+    QTreeWidget#sidebarTree::item:focus {{
+        outline: none;
     }}
 
     QListWidget::item {{
@@ -229,15 +258,16 @@ THEMES: Dict[str, ThemePalette] = {
     "dark": ThemePalette(
         name="dark",
         background="#000000",
-        surface="#05090f",
-        surface_alt="#111a24",
-        border="#1f2a38",
+        surface="#000000",
+        surface_alt="#000000",
+        border="#000000",
         text="#ccffd7",
         text_muted="#5c8b84",
         accent="#00ff90",
         accent_alt="#00cfff",
         highlight="#00ff90",
         highlight_text="#02110a",
+        tree_selection_border="#2a2a2a",
     ),
     "light": ThemePalette(
         name="light",
@@ -251,6 +281,7 @@ THEMES: Dict[str, ThemePalette] = {
         accent_alt="#36d0c4",
         highlight="#1d8df0",
         highlight_text="#f4fbff",
+        tree_selection_border="#7f8c8d",
     ),
 }
 

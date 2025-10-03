@@ -1,19 +1,32 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from PySide6.QtCore import QItemSelectionModel, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QLineEdit,
     QPushButton,
+    QStyledItemDelegate,
     QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QStyleOptionViewItem,
 )
+
+
+
+class _SidebarTreeDelegate(QStyledItemDelegate):
+    '''Custom delegate that suppresses the dotted focus rectangle.'''
+
+    def paint(self, painter, option, index):
+        clean_option = QStyleOptionViewItem(option)
+        clean_option.state &= ~QStyle.State_HasFocus
+        super().paint(painter, clean_option, index)
 
 
 class SidebarWidget(QWidget):
@@ -35,17 +48,23 @@ class SidebarWidget(QWidget):
         self._folder_items: Dict[Path, QTreeWidgetItem] = {}
         self._note_items: Dict[Path, QTreeWidgetItem] = {}
         self._root_item: Optional[QTreeWidgetItem] = None
-
-        style = self.style()
-        self._root_icon = style.standardIcon(QStyle.SP_DriveHDIcon)
-        self._folder_icon = style.standardIcon(QStyle.SP_DirIcon)
-        self._note_icon = style.standardIcon(QStyle.SP_FileIcon)
+        self._note_colors: Dict[Path, str] = {}
+        self._notebook_colors: Dict[Path, str] = {}
+        self._icon_cache: Dict[Tuple[str, int], QIcon] = {}
+        self._default_note_color = "#5E9CFF"
+        self._default_notebook_color = "#FFB74D"
+        self._root_color = "#90A4AE"
+        self._note_dot_size = 10
+        self._notebook_dot_size = 14
+        self._root_dot_size = 16
 
         self._search = QLineEdit(self)
         self._search.setPlaceholderText("Search notes or notebooks...")
         self._tree = QTreeWidget(self)
+        self._tree.setObjectName("sidebarTree")
         self._tree.setHeaderHidden(True)
         self._tree.setIndentation(18)
+        self._tree.setItemDelegate(_SidebarTreeDelegate(self._tree))
         self._tree.setUniformRowHeights(True)
         self._tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self._tree.setRootIsDecorated(True)
@@ -73,9 +92,22 @@ class SidebarWidget(QWidget):
         self._repo_path = repo.resolve() if repo else None
         self._rebuild_tree()
 
-    def set_content(self, *, notes: Iterable[Path], notebooks: Iterable[Path]) -> None:
+    def set_content(
+        self,
+        *,
+        notes: Iterable[Path],
+        notebooks: Iterable[Path],
+        note_colors: Optional[Mapping[Path, str]] = None,
+        notebook_colors: Optional[Mapping[Path, str]] = None,
+    ) -> None:
         note_set = {path.resolve() for path in notes}
         notebook_set = {path.resolve() for path in notebooks}
+        self._note_colors = self._build_color_map(note_colors, note_set, self._default_note_color)
+        self._notebook_colors = self._build_color_map(
+            notebook_colors,
+            notebook_set,
+            self._default_notebook_color,
+        )
         self._notes = sorted(note_set, key=lambda path: path.as_posix())
         self._notebooks = sorted(notebook_set, key=lambda path: path.as_posix())
         self._rebuild_tree()
@@ -152,6 +184,60 @@ class SidebarWidget(QWidget):
 
     # ------------------------------------------------------------------
     # Internal helpers --------------------------------------------------
+
+    def _build_color_map(
+        self,
+        colors: Optional[Mapping[Path, str]],
+        allowed: Set[Path],
+        fallback: str,
+    ) -> Dict[Path, str]:
+        if not colors:
+            return {}
+        mapping: Dict[Path, str] = {}
+        for raw_path, color in colors.items():
+            path = Path(raw_path).resolve()
+            if path not in allowed:
+                continue
+            normalized = self._normalize_color_value(color, fallback)
+            mapping[path] = normalized
+        return mapping
+
+    def _normalize_color_value(self, color: str, fallback: str) -> str:
+        candidate = QColor(color)
+        if not candidate.isValid():
+            candidate = QColor(fallback)
+        return candidate.name(QColor.HexRgb).upper()
+
+    def _color_for_notebook(self, path: Path) -> str:
+        resolved = path.resolve()
+        return self._notebook_colors.get(resolved, self._default_notebook_color)
+
+    def _color_for_note(self, path: Path) -> str:
+        resolved = path.resolve()
+        return self._note_colors.get(resolved, self._default_note_color)
+
+    def _dot_icon(self, color: str, size: int, fallback: str) -> QIcon:
+        normalized = self._normalize_color_value(color, fallback)
+        cache_key = (normalized, size)
+        icon = self._icon_cache.get(cache_key)
+        if icon is not None:
+            return icon
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHints(QPainter.Antialiasing, False)
+        fill = QColor(normalized)
+        border = QColor(fill)
+        border = border.darker(140)
+        painter.setPen(border)
+        painter.setBrush(fill)
+        painter.drawRect(0, 0, size - 1, size - 1)
+        painter.end()
+        icon = QIcon(pixmap)
+        self._icon_cache[cache_key] = icon
+        return icon
+
+
     def _rebuild_tree(self) -> None:
         repo = self._repo_path
         self._tree.blockSignals(True)
@@ -172,7 +258,7 @@ class SidebarWidget(QWidget):
         repo_item.setData(0, self.NOTE_ROLE, str(repo))
         repo_item.setData(0, self.TYPE_ROLE, "root")
         repo_item.setToolTip(0, str(repo))
-        repo_item.setIcon(0, self._root_icon)
+        repo_item.setIcon(0, self._dot_icon(self._root_color, self._root_dot_size, self._root_color))
         repo_item.setExpanded(True)
         self._root_item = repo_item
         self._folder_items[repo] = repo_item
@@ -208,7 +294,7 @@ class SidebarWidget(QWidget):
             item.setData(0, self.NOTE_ROLE, str(note))
             item.setData(0, self.TYPE_ROLE, "note")
             item.setToolTip(0, note.name)
-            item.setIcon(0, self._note_icon)
+            item.setIcon(0, self._dot_icon(self._color_for_note(note), self._note_dot_size, self._default_note_color))
             self._note_items[note] = item
 
         if self._root_item:
@@ -241,7 +327,7 @@ class SidebarWidget(QWidget):
         item.setData(0, self.NOTE_ROLE, str(folder_path))
         item.setData(0, self.TYPE_ROLE, "folder")
         item.setToolTip(0, relative.as_posix())
-        item.setIcon(0, self._folder_icon)
+        item.setIcon(0, self._dot_icon(self._color_for_notebook(folder_path), self._notebook_dot_size, self._default_notebook_color))
         self._folder_items[folder_path] = item
         return item
 
