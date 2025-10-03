@@ -21,7 +21,7 @@ class EditorWidget(QPlainTextEdit):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        font = QFont("Courier New")
+        font = QFont("Space Mono")
         font.setStyleHint(QFont.Monospace)
         self.setFont(font)
         self.setPlaceholderText("Start typing your note...")

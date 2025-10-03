@@ -27,7 +27,7 @@ class ThemePalette:
 
 
 def _build_stylesheet(palette: ThemePalette) -> str:
-    font_stack = "'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace"
+    font_stack = "'Space Mono', 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace"
     return f"""
     * {{
         border-radius: 0px;
