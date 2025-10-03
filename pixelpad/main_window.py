@@ -52,6 +52,10 @@ class PixelPadMainWindow(QMainWindow):
         self._new_note_action = QAction("New Note", self)
         self._new_note_action.setShortcut("Ctrl+N")
         toolbar.addAction(self._new_note_action)
+        self._rename_note_action = QAction("Rename Note", self)
+        self._rename_note_action.setShortcut("F2")
+        self._rename_note_action.setEnabled(False)
+        toolbar.addAction(self._rename_note_action)
         self._delete_note_action = QAction("Delete Note", self)
         self._delete_note_action.setShortcut("Ctrl+Shift+D")
         self._delete_note_action.setEnabled(False)
@@ -64,6 +68,7 @@ class PixelPadMainWindow(QMainWindow):
         self._sidebar.note_selected.connect(self._handle_note_selected)
         self._sidebar.open_repository_requested.connect(self._open_repository)
         self._new_note_action.triggered.connect(self._create_new_note)
+        self._rename_note_action.triggered.connect(self._rename_current_note)
         self._delete_note_action.triggered.connect(self._delete_current_note)
         self._line_numbers_action.toggled.connect(self._toggle_line_numbers)
         self._editor.document().modificationChanged.connect(self._update_window_title)
@@ -134,7 +139,9 @@ class PixelPadMainWindow(QMainWindow):
         self._refresh_actions()
 
     def _refresh_actions(self) -> None:
-        self._delete_note_action.setEnabled(self._current_note is not None)
+        has_note = self._current_note is not None
+        self._delete_note_action.setEnabled(has_note)
+        self._rename_note_action.setEnabled(has_note)
         blocker = QSignalBlocker(self._line_numbers_action)
         self._line_numbers_action.setChecked(self._editor.line_numbers_visible())
         del blocker
@@ -240,6 +247,51 @@ class PixelPadMainWindow(QMainWindow):
             QMessageBox.warning(self, "Cannot Create Note", str(error))
             return
         self._load_note(path)
+        self._editor.setFocus()
+
+    def _rename_current_note(self) -> None:
+        if not self._current_note:
+            QMessageBox.information(self, "Rename Note", "No note is currently open.")
+            return
+        default_name = self._current_note.stem or self._current_note.name
+        name, ok = QInputDialog.getText(self, "Rename Note", "File name:", text=default_name)
+        if not ok:
+            return
+        cleaned = name.strip()
+        if not cleaned:
+            QMessageBox.warning(self, "Invalid Name", "File name cannot be empty.")
+            return
+        extensions = list(self._note_manager.SUPPORTED_EXTENSIONS)
+        current_suffix = self._current_note.suffix.lower()
+        try:
+            default_index = extensions.index(current_suffix)
+        except ValueError:
+            default_index = 0
+        extension, ok = QInputDialog.getItem(
+            self,
+            "Note Format",
+            "Choose a file format:",
+            extensions,
+            default_index,
+            False,
+        )
+        if not ok:
+            return
+        if not self._auto_save_current_note():
+            return
+        try:
+            new_path = self._note_manager.rename_note(self._current_note, f"{cleaned}{extension}")
+        except (UnsupportedNoteExtensionError, ValueError, FileExistsError, FileNotFoundError, IsADirectoryError) as error:
+            QMessageBox.warning(self, "Cannot Rename Note", str(error))
+            self._refresh_recent_notes()
+            return
+        self._current_note = new_path
+        self._editor.document().setModified(False)
+        self._refresh_recent_notes()
+        self._sidebar.set_current_note_path(new_path)
+        self._update_window_title()
+        self._update_status_message()
+        self._refresh_actions()
         self._editor.setFocus()
 
     def _open_repository(self) -> None:

@@ -156,6 +156,44 @@ class NoteManager:
         note_path.touch(exist_ok=overwrite)
         return note_path
 
+    def rename_note(
+        self,
+        note: Path | str,
+        new_name: Path | str,
+        *,
+        overwrite: bool = False,
+    ) -> Path:
+        """Rename an existing note within the configured repository."""
+        note_path = self._resolve_note_path(note)
+        if not note_path.exists():
+            raise FileNotFoundError(f"Cannot rename missing note: {note_path}")
+        repo = self._ensure_repository().resolve()
+        target = Path(new_name)
+        if not target.is_absolute():
+            target = repo / target
+        target = target.expanduser().resolve(strict=False)
+        try:
+            target.relative_to(repo)
+        except ValueError as exc:
+            raise ValueError("Renamed note must remain within the configured repository.") from exc
+        if target.is_dir():
+            raise IsADirectoryError(f"Cannot rename note to a directory: {target}")
+        if not target.suffix:
+            target = target.with_suffix(note_path.suffix)
+        extension = target.suffix.lower()
+        if extension not in self.SUPPORTED_EXTENSIONS:
+            raise UnsupportedNoteExtensionError(f"Unsupported note extension: {extension}")
+        if target == note_path:
+            return target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if overwrite:
+                target.unlink()
+            else:
+                raise FileExistsError(f"Target note already exists: {target}")
+        note_path.rename(target)
+        return target
+
     def delete_note(self, note: Path | str) -> None:
         note_path = self._resolve_note_path(note)
         if not note_path.exists():
