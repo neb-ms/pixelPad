@@ -6,6 +6,7 @@ from typing import Optional
 from PySide6.QtCore import QSignalBlocker, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QInputDialog,
     QMainWindow,
@@ -22,6 +23,7 @@ from .note_manager import (
     UnsupportedNoteExtensionError,
 )
 from .sidebar_widget import SidebarWidget
+from .qss_styles import apply_theme
 
 
 class PixelPadMainWindow(QMainWindow):
@@ -64,6 +66,10 @@ class PixelPadMainWindow(QMainWindow):
         self._line_numbers_action.setCheckable(True)
         self._line_numbers_action.setChecked(True)
         toolbar.addAction(self._line_numbers_action)
+        self._light_mode_action = QAction("Light Mode", self)
+        self._light_mode_action.setCheckable(True)
+        self._light_mode_action.setChecked(False)
+        toolbar.addAction(self._light_mode_action)
 
         self._focus_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self._focus_search_shortcut.activated.connect(self._focus_sidebar_search)
@@ -74,7 +80,10 @@ class PixelPadMainWindow(QMainWindow):
         self._rename_note_action.triggered.connect(self._rename_current_note)
         self._delete_note_action.triggered.connect(self._delete_current_note)
         self._line_numbers_action.toggled.connect(self._toggle_line_numbers)
+        self._light_mode_action.toggled.connect(self._toggle_theme)
         self._editor.document().modificationChanged.connect(self._update_window_title)
+
+        self._current_theme = "dark"
 
         if not self._ensure_repository_configured():
             QTimer.singleShot(0, self.close)
@@ -148,9 +157,22 @@ class PixelPadMainWindow(QMainWindow):
         blocker = QSignalBlocker(self._line_numbers_action)
         self._line_numbers_action.setChecked(self._editor.line_numbers_visible())
         del blocker
+        theme_blocker = QSignalBlocker(self._light_mode_action)
+        self._light_mode_action.setChecked(self._current_theme == "light")
+        del theme_blocker
+        self._light_mode_action.setText("Dark Mode" if self._current_theme == "light" else "Light Mode")
 
     def _toggle_line_numbers(self, checked: bool) -> None:
         self._editor.set_line_numbers_visible(checked)
+
+    def _toggle_theme(self, light_mode: bool) -> None:
+        app = QApplication.instance()
+        if not app:
+            return
+        self._current_theme = "light" if light_mode else "dark"
+        apply_theme(app, self._current_theme)
+        self._editor.refresh_line_numbers()
+        self._refresh_actions()
 
     def _focus_sidebar_search(self) -> None:
         self._sidebar.focus_search()
