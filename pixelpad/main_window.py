@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QSignalBlocker, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtCore import QSignalBlocker, QTimer, Qt
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QInputDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -51,6 +52,17 @@ class PixelPadMainWindow(QMainWindow):
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
+        self._logo_label: Optional[QLabel] = None
+        logo_pixmap = self._load_logo_pixmap()
+        if not logo_pixmap.isNull():
+            self._logo_label = QLabel(self)
+            self._logo_label.setObjectName("toolbarLogo")
+            target_height = max(toolbar.iconSize().height(), 32)
+            scaled = logo_pixmap.scaledToHeight(target_height, Qt.SmoothTransformation)
+            self._logo_label.setPixmap(scaled)
+            self._logo_label.setToolTip("PixelPad")
+            toolbar.addWidget(self._logo_label)
+            toolbar.addSeparator()
         self._new_note_action = QAction("New Note", self)
         self._new_note_action.setShortcut("Ctrl+N")
         toolbar.addAction(self._new_note_action)
@@ -173,6 +185,21 @@ class PixelPadMainWindow(QMainWindow):
         apply_theme(app, self._current_theme)
         self._editor.refresh_line_numbers()
         self._refresh_actions()
+
+    def _load_logo_pixmap(self) -> QPixmap:
+        """Locate and load the PixelPad logo asset, returning an empty pixmap on failure."""
+
+        candidate_paths = [
+            Path(__file__).resolve().parent.parent / "pics" / "pixelPad-logo.png",
+            Path.cwd() / "pics" / "pixelPad-logo.png",
+            Path.home() / "pics" / "pixelPad-logo.png",
+        ]
+        for asset_path in candidate_paths:
+            if asset_path.exists():
+                pixmap = QPixmap(str(asset_path))
+                if not pixmap.isNull():
+                    return pixmap
+        return QPixmap()
 
     def _focus_sidebar_search(self) -> None:
         self._sidebar.focus_search()

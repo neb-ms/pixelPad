@@ -54,6 +54,12 @@ def _build_stylesheet(palette: ThemePalette) -> str:
         padding: 4px 10px;
         color: {palette.text};
     }}
+    QLabel#toolbarLogo {{
+        background-color: transparent;
+        border: none;
+        padding: 0px;
+        margin-right: 8px;
+    }}
     QToolBar QToolButton:hover {{
         background-color: {palette.accent_alt};
         border-color: {palette.accent};
