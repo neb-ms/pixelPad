@@ -65,6 +65,7 @@ class PixelPadMainWindow(QMainWindow):
         self._refresh_recent_notes()
         self._update_window_title()
         self._update_status_message()
+        QTimer.singleShot(0, self._open_initial_note)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._auto_save_current_note():
@@ -119,6 +120,35 @@ class PixelPadMainWindow(QMainWindow):
         self._sidebar.set_notes(notes)
         if self._current_note:
             self._sidebar.set_current_note_path(self._current_note)
+
+
+    def _open_initial_note(self) -> None:
+        if self._current_note:
+            return
+        try:
+            notes = self._note_manager.get_recent_notes()
+        except NotesRepositoryNotConfiguredError:
+            return
+        if notes:
+            self._load_note(notes[0])
+        else:
+            self._prompt_create_initial_note()
+
+    def _prompt_create_initial_note(self) -> None:
+        response = QMessageBox.question(
+            self,
+            "Create First Note",
+            "No notes found in the repository. Create one now?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if response == QMessageBox.Yes:
+            previous_note = self._current_note
+            self._create_new_note()
+            if self._current_note is None or self._current_note == previous_note:
+                QTimer.singleShot(0, self._prompt_create_initial_note)
+        else:
+            self.statusBar().showMessage("Use New Note to start writing.")
 
     def _handle_note_selected(self, note: Path) -> None:
         note = note.resolve()

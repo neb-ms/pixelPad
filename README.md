@@ -19,6 +19,7 @@ The first launch prompts for a notes repository. Choose an existing folder (or c
 
 - Auto-configures a notes repository on first launch and persists it for future runs (FR1.1).
 - Sidebar with search-driven recent notes list for rapid switching (FR2.2, FR2.3, FR2.4).
+- Automatically opens your most recent note on launch and prompts for a first note when the repository is empty.
 - New note workflow with `.txt` and `.md` support, plus automatic auto-save triggers on note switches and window close (FR1.2, FR1.3, FR2.1).
 - Open-repository shortcut that launches the configured folder in the system file explorer (FR1.4).
 
