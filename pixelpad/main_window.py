@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QSignalBlocker, QTimer
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
@@ -64,6 +64,9 @@ class PixelPadMainWindow(QMainWindow):
         self._line_numbers_action.setCheckable(True)
         self._line_numbers_action.setChecked(True)
         toolbar.addAction(self._line_numbers_action)
+
+        self._focus_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self._focus_search_shortcut.activated.connect(self._focus_sidebar_search)
 
         self._sidebar.note_selected.connect(self._handle_note_selected)
         self._sidebar.open_repository_requested.connect(self._open_repository)
@@ -148,6 +151,9 @@ class PixelPadMainWindow(QMainWindow):
 
     def _toggle_line_numbers(self, checked: bool) -> None:
         self._editor.set_line_numbers_visible(checked)
+
+    def _focus_sidebar_search(self) -> None:
+        self._sidebar.focus_search()
 
     def _open_initial_note(self) -> None:
         if self._current_note:

@@ -70,6 +70,10 @@ class SidebarWidget(QWidget):
             return None
         return Path(data)
 
+    def focus_search(self) -> None:
+        self._search.setFocus(Qt.ShortcutFocusReason)
+        self._search.selectAll()
+
     def _rebuild_list(self) -> None:
         selected = self.current_note_path()
         self._list.blockSignals(True)
