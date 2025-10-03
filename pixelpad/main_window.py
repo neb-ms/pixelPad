@@ -83,16 +83,28 @@ class PixelPadMainWindow(QMainWindow):
         self._light_mode_action.setChecked(False)
         toolbar.addAction(self._light_mode_action)
 
+        toolbar.addSeparator()
+        self._new_notebook_action = QAction("New Notebook", self)
+        self._new_notebook_action.setShortcut("Ctrl+Shift+N")
+        toolbar.addAction(self._new_notebook_action)
+        self._delete_notebook_action = QAction("Delete Notebook", self)
+        self._delete_notebook_action.setShortcut("Ctrl+Shift+Delete")
+        self._delete_notebook_action.setEnabled(False)
+        toolbar.addAction(self._delete_notebook_action)
+
         self._focus_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self._focus_search_shortcut.activated.connect(self._focus_sidebar_search)
 
         self._sidebar.note_selected.connect(self._handle_note_selected)
         self._sidebar.open_repository_requested.connect(self._open_repository)
+        self._sidebar.selection_changed.connect(self._refresh_actions)
         self._new_note_action.triggered.connect(self._create_new_note)
         self._rename_note_action.triggered.connect(self._rename_current_note)
         self._delete_note_action.triggered.connect(self._delete_current_note)
         self._line_numbers_action.toggled.connect(self._toggle_line_numbers)
         self._light_mode_action.toggled.connect(self._toggle_theme)
+        self._new_notebook_action.triggered.connect(self._create_new_notebook)
+        self._delete_notebook_action.triggered.connect(self._delete_current_notebook)
         self._editor.document().modificationChanged.connect(self._update_window_title)
 
         self._current_theme = "dark"
@@ -116,7 +128,9 @@ class PixelPadMainWindow(QMainWindow):
     def _ensure_repository_configured(self) -> bool:
         while True:
             try:
-                self._note_manager.require_repository()
+                repo = self._note_manager.require_repository()
+                self._sidebar.set_repository_path(repo)
+                self._sidebar.select_repository_root()
                 return True
             except NotesRepositoryNotConfiguredError as error:
                 QMessageBox.information(
@@ -137,7 +151,9 @@ class PixelPadMainWindow(QMainWindow):
                     return False
                 continue
             try:
-                self._note_manager.set_repository_path(selected)
+                resolved = self._note_manager.set_repository_path(selected)
+                self._sidebar.set_repository_path(resolved)
+                self._sidebar.select_repository_root()
             except (FileNotFoundError, NotADirectoryError) as file_error:
                 QMessageBox.warning(self, "Invalid Repository", str(file_error))
                 continue
@@ -151,21 +167,29 @@ class PixelPadMainWindow(QMainWindow):
 
     def _refresh_recent_notes(self) -> None:
         try:
-            notes = self._note_manager.get_recent_notes()
+            notes = self._note_manager.get_all_notes()
+            notebooks = self._note_manager.get_all_notebooks()
         except NotesRepositoryNotConfiguredError as error:
             QMessageBox.warning(self, "Repository Error", str(error))
             if self._ensure_repository_configured():
                 self._refresh_recent_notes()
             return
-        self._sidebar.set_notes(notes)
+        repo = self._note_manager.get_repository_path()
+        self._sidebar.set_repository_path(repo)
+        self._sidebar.set_content(notes=notes, notebooks=notebooks)
         if self._current_note:
             self._sidebar.set_current_note_path(self._current_note)
+        else:
+            self._sidebar.select_repository_root()
         self._refresh_actions()
 
     def _refresh_actions(self) -> None:
         has_note = self._current_note is not None
         self._delete_note_action.setEnabled(has_note)
         self._rename_note_action.setEnabled(has_note)
+        repo_configured = self._note_manager.get_repository_path() is not None
+        self._new_notebook_action.setEnabled(repo_configured)
+        self._delete_notebook_action.setEnabled(self._can_delete_current_notebook())
         blocker = QSignalBlocker(self._line_numbers_action)
         self._line_numbers_action.setChecked(self._editor.line_numbers_visible())
         del blocker
@@ -185,6 +209,109 @@ class PixelPadMainWindow(QMainWindow):
         apply_theme(app, self._current_theme)
         self._editor.refresh_line_numbers()
         self._refresh_actions()
+
+    def _can_delete_current_notebook(self) -> bool:
+        notebook = self._sidebar.current_notebook_path()
+        if notebook is None:
+            return False
+        repo = self._note_manager.get_repository_path()
+        if repo is None:
+            return False
+        try:
+            return notebook.resolve() != repo.resolve()
+        except FileNotFoundError:
+            return False
+
+    def _create_new_notebook(self) -> None:
+        try:
+            repo = self._note_manager.require_repository()
+        except NotesRepositoryNotConfiguredError as error:
+            QMessageBox.warning(self, "Repository Not Configured", str(error))
+            return
+        parent_directory = self._sidebar.current_container_path() or repo
+        name, ok = QInputDialog.getText(self, "New Notebook", "Notebook name:")
+        if not ok:
+            return
+        cleaned = name.strip()
+        if not cleaned:
+            QMessageBox.warning(self, "Invalid Name", "Notebook name cannot be empty.")
+            return
+        try:
+            notebook_path = self._note_manager.create_notebook(cleaned, parent_directory)
+        except (ValueError, FileExistsError, NotADirectoryError) as error:
+            QMessageBox.warning(self, "Cannot Create Notebook", str(error))
+            return
+        self.statusBar().showMessage(f"Notebook created: {notebook_path.relative_to(repo)}")
+        self._refresh_recent_notes()
+        self._sidebar.set_current_notebook_path(notebook_path)
+
+    def _delete_current_notebook(self) -> None:
+        notebook_path = self._sidebar.current_notebook_path()
+        if notebook_path is None:
+            QMessageBox.information(self, "Delete Notebook", "Select a notebook in the sidebar to delete.")
+            return
+        notebook_path = notebook_path.resolve()
+        try:
+            repo = self._note_manager.require_repository()
+        except NotesRepositoryNotConfiguredError as error:
+            QMessageBox.warning(self, "Repository Not Configured", str(error))
+            return
+        repo = repo.resolve()
+        if notebook_path == repo:
+            QMessageBox.warning(self, "Cannot Delete", "The repository root cannot be deleted.")
+            return
+
+        contents = list(notebook_path.iterdir()) if notebook_path.exists() else []
+        if not notebook_path.exists():
+            QMessageBox.warning(self, "Notebook Missing", "The selected notebook no longer exists.")
+            self._refresh_recent_notes()
+            return
+
+        if contents:
+            confirm = QMessageBox.question(
+                self,
+                "Delete Notebook",
+                f"'{notebook_path.relative_to(repo)}' contains files or subfolders. Delete everything?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+        else:
+            confirm = QMessageBox.question(
+                self,
+                "Delete Notebook",
+                f"Delete empty notebook '{notebook_path.relative_to(repo)}'?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if confirm != QMessageBox.Yes:
+                return
+
+        try:
+            self._note_manager.delete_notebook(notebook_path, recursive=bool(contents))
+        except (FileNotFoundError, NotADirectoryError, ValueError, OSError) as error:
+            QMessageBox.critical(self, "Unable to Delete Notebook", str(error))
+            return
+
+        if self._current_note is not None:
+            try:
+                self._current_note.resolve().relative_to(notebook_path)
+            except (ValueError, FileNotFoundError):
+                pass
+            else:
+                blocker = QSignalBlocker(self._editor)
+                self._editor.clear()
+                self._editor.document().setModified(False)
+                del blocker
+                self._current_note = None
+
+        self._refresh_recent_notes()
+        self._sidebar.select_repository_root()
+        self._update_window_title()
+        self._update_status_message()
+        self._refresh_actions()
+        self.statusBar().showMessage(f"Notebook deleted: {notebook_path.relative_to(repo)}")
 
     def _load_logo_pixmap(self) -> QPixmap:
         """Locate and load the PixelPad logo asset, returning an empty pixmap on failure."""
@@ -296,8 +423,9 @@ class PixelPadMainWindow(QMainWindow):
             return
         if not self._auto_save_current_note():
             return
+        container = self._sidebar.current_container_path()
         try:
-            path = self._note_manager.create_note(cleaned, extension)
+            path = self._note_manager.create_note(cleaned, extension, directory=container)
         except (UnsupportedNoteExtensionError, ValueError, FileExistsError) as error:
             QMessageBox.warning(self, "Cannot Create Note", str(error))
             return

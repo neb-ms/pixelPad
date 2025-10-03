@@ -132,8 +132,16 @@ class NoteManager:
         notes.sort(key=lambda path: path.stat().st_mtime, reverse=True)
         return notes[: self.RECENT_LIMIT]
 
-    def create_note(self, filename: str, extension: str = ".txt", *, overwrite: bool = False) -> Path:
+    def create_note(
+        self,
+        filename: str,
+        extension: str = ".txt",
+        *,
+        directory: Path | str | None = None,
+        overwrite: bool = False,
+    ) -> Path:
         repo = self._ensure_repository()
+        target_dir = self._resolve_directory(directory)
         candidate = Path(filename)
         base_name = candidate.stem if candidate.suffix else candidate.name
         ext = candidate.suffix.lower() if candidate.suffix else extension.lower()
@@ -144,7 +152,7 @@ class NoteManager:
         safe_name = Path(base_name).name
         if not safe_name:
             raise ValueError("Filename must not be empty.")
-        note_path = (repo / safe_name).with_suffix(ext)
+        note_path = (target_dir / safe_name).with_suffix(ext)
         note_path = note_path.resolve()
         try:
             note_path.relative_to(repo.resolve())
@@ -155,6 +163,67 @@ class NoteManager:
         note_path.parent.mkdir(parents=True, exist_ok=True)
         note_path.touch(exist_ok=overwrite)
         return note_path
+
+    def create_notebook(
+        self,
+        name: str,
+        parent: Path | str | None = None,
+        *,
+        exist_ok: bool = False,
+    ) -> Path:
+        repo = self._ensure_repository()
+        parent_dir = self._resolve_directory(parent)
+        if parent_dir == repo and parent is None:
+            parent_dir = repo
+        folder_name = Path(name).name.strip()
+        if not folder_name:
+            raise ValueError("Notebook name must not be empty.")
+        notebook_path = (parent_dir / folder_name).resolve()
+        try:
+            notebook_path.relative_to(repo.resolve())
+        except ValueError as exc:
+            raise ValueError("Notebook must reside within the configured repository.") from exc
+        if notebook_path.exists():
+            if not notebook_path.is_dir():
+                raise FileExistsError(f"A file with that name already exists: {notebook_path}")
+            if not exist_ok:
+                raise FileExistsError(f"Notebook already exists: {notebook_path}")
+            return notebook_path
+        notebook_path.mkdir(parents=True, exist_ok=False)
+        return notebook_path
+
+    def delete_notebook(
+        self,
+        notebook: Path | str,
+        *,
+        recursive: bool = False,
+    ) -> None:
+        repo = self._ensure_repository().resolve()
+        notebook_path = self._resolve_directory_path(notebook)
+        if notebook_path == repo:
+            raise ValueError("Cannot delete the repository root as a notebook.")
+        if not notebook_path.exists():
+            raise FileNotFoundError(f"Notebook does not exist: {notebook_path}")
+        if not notebook_path.is_dir():
+            raise NotADirectoryError(f"Target is not a notebook directory: {notebook_path}")
+
+        contents = list(notebook_path.iterdir())
+        if contents and not recursive:
+            raise OSError("Notebook is not empty. Pass recursive=True to delete its contents.")
+
+        if recursive:
+            # Remove files and nested directories first.
+            for child in sorted(contents, reverse=True):
+                if child.is_dir():
+                    self.delete_notebook(child, recursive=True)
+                else:
+                    child.unlink()
+
+        notebook_path.rmdir()
+        parent = notebook_path.parent
+        while parent != repo and parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
 
     def rename_note(
         self,
@@ -198,12 +267,7 @@ class NoteManager:
         note_path = self._resolve_note_path(note)
         if not note_path.exists():
             raise FileNotFoundError(f"Cannot delete missing note: {note_path}")
-        repo = self._ensure_repository().resolve()
         note_path.unlink()
-        parent = note_path.parent
-        while parent != repo and not any(parent.iterdir()):
-            parent.rmdir()
-            parent = parent.parent
 
     def open_repository(self) -> None:
         repo = self._ensure_repository()
@@ -216,3 +280,43 @@ class NoteManager:
             subprocess.run(["open", repo_str], check=False)
             return
         subprocess.run(["xdg-open", repo_str], check=False)
+
+    def get_all_notebooks(self) -> List[Path]:
+        repo = self._ensure_repository()
+        notebooks = [path for path in repo.rglob("*") if path.is_dir()]
+        notebooks_sorted = sorted(
+            notebooks,
+            key=lambda path: path.relative_to(repo).as_posix(),
+        )
+        return notebooks_sorted
+
+    def _resolve_directory(self, directory: Path | str | None) -> Path:
+        repo = self._ensure_repository().resolve()
+        if directory is None:
+            return repo
+        directory_path = Path(directory)
+        if not directory_path.is_absolute():
+            directory_path = repo / directory_path
+        directory_path = directory_path.expanduser().resolve()
+        try:
+            directory_path.relative_to(repo)
+        except ValueError as exc:
+            raise ValueError("Directory must reside within the configured repository.") from exc
+        if directory_path.exists() and not directory_path.is_dir():
+            raise NotADirectoryError(f"Target is not a directory: {directory_path}")
+        directory_path.mkdir(parents=True, exist_ok=True)
+        return directory_path
+
+    def _resolve_directory_path(self, directory: Path | str) -> Path:
+        repo = self._ensure_repository().resolve()
+        directory_path = Path(directory)
+        if not directory_path.is_absolute():
+            directory_path = repo / directory_path
+        directory_path = directory_path.expanduser().resolve()
+        try:
+            directory_path.relative_to(repo)
+        except ValueError as exc:
+            raise ValueError("Directory must reside within the configured repository.") from exc
+        if directory_path.exists() and not directory_path.is_dir():
+            raise NotADirectoryError(f"Target is not a directory: {directory_path}")
+        return directory_path
