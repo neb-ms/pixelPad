@@ -156,6 +156,17 @@ class NoteManager:
         note_path.touch(exist_ok=overwrite)
         return note_path
 
+    def delete_note(self, note: Path | str) -> None:
+        note_path = self._resolve_note_path(note)
+        if not note_path.exists():
+            raise FileNotFoundError(f"Cannot delete missing note: {note_path}")
+        repo = self._ensure_repository().resolve()
+        note_path.unlink()
+        parent = note_path.parent
+        while parent != repo and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+
     def open_repository(self) -> None:
         repo = self._ensure_repository()
         system = platform.system()

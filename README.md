@@ -20,6 +20,7 @@ The first launch prompts for a notes repository. Choose an existing folder (or c
 - Auto-configures a notes repository on first launch and persists it for future runs (FR1.1).
 - Sidebar with search-driven recent notes list for rapid switching (FR2.2, FR2.3, FR2.4).
 - Automatically opens your most recent note on launch and prompts for a first note when the repository is empty.
+- Toggleable editor line numbers to match FR3.1 requirements.
 - New note workflow with `.txt` and `.md` support, plus automatic auto-save triggers on note switches and window close (FR1.2, FR1.3, FR2.1).
 - Open-repository shortcut that launches the configured folder in the system file explorer (FR1.4).
 
@@ -30,3 +31,5 @@ The first launch prompts for a notes repository. Choose an existing folder (or c
 3. Filter the recent notes list by typing in the search field and ensure the list updates instantly.
 4. Close the window with unsaved edits and verify the changes persist when reopening the note.
 5. Click **Open Repository** and confirm the system file explorer opens the configured folder.
+6. Select a note and use the toolbar delete action (or Ctrl+Shift+D) to remove it; verify the file is gone and another note (or the new-note prompt) appears.
+7. Toggle line numbers off and back on using the toolbar button (or shortcut, if configured) and confirm the gutter disappears/reappears immediately.

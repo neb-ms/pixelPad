@@ -52,10 +52,20 @@ class PixelPadMainWindow(QMainWindow):
         self._new_note_action = QAction("New Note", self)
         self._new_note_action.setShortcut("Ctrl+N")
         toolbar.addAction(self._new_note_action)
+        self._delete_note_action = QAction("Delete Note", self)
+        self._delete_note_action.setShortcut("Ctrl+Shift+D")
+        self._delete_note_action.setEnabled(False)
+        toolbar.addAction(self._delete_note_action)
+        self._line_numbers_action = QAction("Line Numbers", self)
+        self._line_numbers_action.setCheckable(True)
+        self._line_numbers_action.setChecked(True)
+        toolbar.addAction(self._line_numbers_action)
 
         self._sidebar.note_selected.connect(self._handle_note_selected)
         self._sidebar.open_repository_requested.connect(self._open_repository)
         self._new_note_action.triggered.connect(self._create_new_note)
+        self._delete_note_action.triggered.connect(self._delete_current_note)
+        self._line_numbers_action.toggled.connect(self._toggle_line_numbers)
         self._editor.document().modificationChanged.connect(self._update_window_title)
 
         if not self._ensure_repository_configured():
@@ -65,6 +75,7 @@ class PixelPadMainWindow(QMainWindow):
         self._refresh_recent_notes()
         self._update_window_title()
         self._update_status_message()
+        self._refresh_actions()
         QTimer.singleShot(0, self._open_initial_note)
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -120,7 +131,16 @@ class PixelPadMainWindow(QMainWindow):
         self._sidebar.set_notes(notes)
         if self._current_note:
             self._sidebar.set_current_note_path(self._current_note)
+        self._refresh_actions()
 
+    def _refresh_actions(self) -> None:
+        self._delete_note_action.setEnabled(self._current_note is not None)
+        blocker = QSignalBlocker(self._line_numbers_action)
+        self._line_numbers_action.setChecked(self._editor.line_numbers_visible())
+        del blocker
+
+    def _toggle_line_numbers(self, checked: bool) -> None:
+        self._editor.set_line_numbers_visible(checked)
 
     def _open_initial_note(self) -> None:
         if self._current_note:
@@ -171,6 +191,7 @@ class PixelPadMainWindow(QMainWindow):
         self._current_note = note
         self._editor.document().setModified(False)
         del blocker
+        self._editor.refresh_line_numbers()
         self._refresh_recent_notes()
         self._sidebar.set_current_note_path(note)
         self._update_window_title()
@@ -245,3 +266,35 @@ class PixelPadMainWindow(QMainWindow):
         if self._current_note:
             parts.append(f"Current note: {self._current_note.name}")
         self.statusBar().showMessage(" | ".join(parts))
+
+    def _delete_current_note(self) -> None:
+        if not self._current_note:
+            QMessageBox.information(self, "Delete Note", "No note is currently open.")
+            return
+        note_name = self._current_note.name
+        confirm = QMessageBox.question(
+            self,
+            "Delete Note",
+            f"Delete '{note_name}' permanently?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+        try:
+            self._note_manager.delete_note(self._current_note)
+        except (FileNotFoundError, OSError, ValueError) as error:
+            QMessageBox.critical(self, "Unable to Delete", str(error))
+            self._refresh_recent_notes()
+            return
+        blocker = QSignalBlocker(self._editor)
+        self._editor.clear()
+        self._editor.document().setModified(False)
+        del blocker
+        self._editor.refresh_line_numbers()
+        self._current_note = None
+        self._refresh_recent_notes()
+        self._update_window_title()
+        self._update_status_message()
+        self._refresh_actions()
+        QTimer.singleShot(0, self._open_initial_note)
