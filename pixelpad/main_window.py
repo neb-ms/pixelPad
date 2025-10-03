@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QSignalBlocker, QTimer, Qt
+from PySide6.QtCore import QSignalBlocker, QSize, QTimer, Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -51,6 +51,8 @@ class PixelPadMainWindow(QMainWindow):
 
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        toolbar.setIconSize(QSize(16, 16))
         self.addToolBar(toolbar)
         self._logo_label: Optional[QLabel] = None
         logo_pixmap = self._load_logo_pixmap()
@@ -74,6 +76,18 @@ class PixelPadMainWindow(QMainWindow):
         self._delete_note_action.setShortcut("Ctrl+Shift+D")
         self._delete_note_action.setEnabled(False)
         toolbar.addAction(self._delete_note_action)
+        self._new_notebook_action = QAction("New Notebook", self)
+        self._new_notebook_action.setShortcut("Ctrl+Shift+N")
+        toolbar.addAction(self._new_notebook_action)
+        self._rename_notebook_action = QAction("Rename Notebook", self)
+        self._rename_notebook_action.setShortcut("Ctrl+Shift+R")
+        toolbar.addAction(self._rename_notebook_action)
+        self._delete_notebook_action = QAction("Delete Notebook", self)
+        self._delete_notebook_action.setShortcut("Ctrl+Shift+Delete")
+        self._delete_notebook_action.setEnabled(False)
+        toolbar.addAction(self._delete_notebook_action)
+
+        toolbar.addSeparator()
         self._line_numbers_action = QAction("Line Numbers", self)
         self._line_numbers_action.setCheckable(True)
         self._line_numbers_action.setChecked(True)
@@ -83,20 +97,12 @@ class PixelPadMainWindow(QMainWindow):
         self._light_mode_action.setChecked(False)
         toolbar.addAction(self._light_mode_action)
 
-        toolbar.addSeparator()
-        self._new_notebook_action = QAction("New Notebook", self)
-        self._new_notebook_action.setShortcut("Ctrl+Shift+N")
-        toolbar.addAction(self._new_notebook_action)
-        self._delete_notebook_action = QAction("Delete Notebook", self)
-        self._delete_notebook_action.setShortcut("Ctrl+Shift+Delete")
-        self._delete_notebook_action.setEnabled(False)
-        toolbar.addAction(self._delete_notebook_action)
-
         self._focus_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self._focus_search_shortcut.activated.connect(self._focus_sidebar_search)
 
         self._sidebar.note_selected.connect(self._handle_note_selected)
         self._sidebar.open_repository_requested.connect(self._open_repository)
+        self._sidebar.change_repository_requested.connect(self._change_repository)
         self._sidebar.selection_changed.connect(self._refresh_actions)
         self._new_note_action.triggered.connect(self._create_new_note)
         self._rename_note_action.triggered.connect(self._rename_current_note)
@@ -104,6 +110,7 @@ class PixelPadMainWindow(QMainWindow):
         self._line_numbers_action.toggled.connect(self._toggle_line_numbers)
         self._light_mode_action.toggled.connect(self._toggle_theme)
         self._new_notebook_action.triggered.connect(self._create_new_notebook)
+        self._rename_notebook_action.triggered.connect(self._rename_current_notebook)
         self._delete_notebook_action.triggered.connect(self._delete_current_notebook)
         self._editor.document().modificationChanged.connect(self._update_window_title)
 
@@ -189,6 +196,7 @@ class PixelPadMainWindow(QMainWindow):
         self._rename_note_action.setEnabled(has_note)
         repo_configured = self._note_manager.get_repository_path() is not None
         self._new_notebook_action.setEnabled(repo_configured)
+        self._rename_notebook_action.setEnabled(self._can_rename_current_notebook())
         self._delete_notebook_action.setEnabled(self._can_delete_current_notebook())
         blocker = QSignalBlocker(self._line_numbers_action)
         self._line_numbers_action.setChecked(self._editor.line_numbers_visible())
@@ -222,6 +230,18 @@ class PixelPadMainWindow(QMainWindow):
         except FileNotFoundError:
             return False
 
+    def _can_rename_current_notebook(self) -> bool:
+        notebook = self._sidebar.current_notebook_path()
+        if notebook is None:
+            return False
+        repo = self._note_manager.get_repository_path()
+        if repo is None:
+            return False
+        try:
+            return notebook.resolve() != repo.resolve()
+        except FileNotFoundError:
+            return False
+
     def _create_new_notebook(self) -> None:
         try:
             repo = self._note_manager.require_repository()
@@ -244,6 +264,54 @@ class PixelPadMainWindow(QMainWindow):
         self.statusBar().showMessage(f"Notebook created: {notebook_path.relative_to(repo)}")
         self._refresh_recent_notes()
         self._sidebar.set_current_notebook_path(notebook_path)
+
+    def _rename_current_notebook(self) -> None:
+        notebook_path = self._sidebar.current_notebook_path()
+        if notebook_path is None:
+            QMessageBox.information(self, "Rename Notebook", "Select a notebook in the sidebar to rename.")
+            return
+        try:
+            repo = self._note_manager.require_repository()
+        except NotesRepositoryNotConfiguredError as error:
+            QMessageBox.warning(self, "Repository Not Configured", str(error))
+            return
+        repo = repo.resolve()
+        notebook_path = notebook_path.resolve()
+        if notebook_path == repo:
+            QMessageBox.warning(self, "Cannot Rename", "The repository root cannot be renamed from here.")
+            return
+        default_name = notebook_path.name
+        name, ok = QInputDialog.getText(self, "Rename Notebook", "New notebook name:", text=default_name)
+        if not ok:
+            return
+        cleaned = name.strip()
+        if not cleaned:
+            QMessageBox.warning(self, "Invalid Name", "Notebook name cannot be empty.")
+            return
+        target = notebook_path.parent / cleaned
+        if target == notebook_path:
+            return
+        if target.exists():
+            QMessageBox.warning(self, "Cannot Rename", f"A folder named '{cleaned}' already exists.")
+            return
+        current_note_relative = None
+        if self._current_note is not None:
+            try:
+                current_note_relative = self._current_note.relative_to(notebook_path)
+            except ValueError:
+                current_note_relative = None
+        try:
+            notebook_path.rename(target)
+        except OSError as error:
+            QMessageBox.critical(self, "Unable to Rename Notebook", str(error))
+            return
+        if current_note_relative is not None:
+            self._current_note = (target / current_note_relative).resolve()
+            self._load_note(self._current_note)
+        else:
+            self._refresh_recent_notes()
+            self._sidebar.set_current_notebook_path(target)
+        self.statusBar().showMessage(f"Notebook renamed to: {target.relative_to(repo)}")
 
     def _delete_current_notebook(self) -> None:
         notebook_path = self._sidebar.current_notebook_path()
@@ -330,6 +398,24 @@ class PixelPadMainWindow(QMainWindow):
 
     def _focus_sidebar_search(self) -> None:
         self._sidebar.focus_search()
+
+    def _change_repository(self) -> None:
+        if not self._auto_save_current_note():
+            return
+        new_path = self._prompt_for_repository_path()
+        if new_path is None:
+            return
+        try:
+            resolved = self._note_manager.set_repository_path(new_path)
+        except (FileNotFoundError, NotADirectoryError) as error:
+            QMessageBox.warning(self, "Invalid Repository", str(error))
+            return
+        self._current_note = None
+        self._sidebar.set_repository_path(resolved)
+        self._sidebar.select_repository_root()
+        self._refresh_recent_notes()
+        self._update_window_title()
+        self._update_status_message()
 
     def _open_initial_note(self) -> None:
         if self._current_note:

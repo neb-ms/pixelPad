@@ -45,14 +45,18 @@ def _build_stylesheet(palette: ThemePalette) -> str:
     QToolBar {{
         background-color: {palette.surface_alt};
         border-bottom: 2px solid {palette.border};
-        padding: 6px;
-        spacing: 6px;
+        padding: 4px;
+        spacing: 4px;
     }}
     QToolBar QToolButton {{
         background-color: {palette.surface};
         border: 2px solid {palette.border};
-        padding: 4px 10px;
+        padding: 2px 6px;
         color: {palette.text};
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: none;
+        letter-spacing: 0;
     }}
     QLabel#toolbarLogo {{
         background-color: transparent;

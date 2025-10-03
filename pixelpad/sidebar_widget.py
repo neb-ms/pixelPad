@@ -21,6 +21,7 @@ class SidebarWidget(QWidget):
 
     note_selected = Signal(Path)
     open_repository_requested = Signal()
+    change_repository_requested = Signal()
     selection_changed = Signal()
 
     NOTE_ROLE = Qt.UserRole
@@ -56,6 +57,8 @@ class SidebarWidget(QWidget):
 
         self._open_button = QPushButton("Open Repository", self)
         self._open_button.clicked.connect(self.open_repository_requested)
+        self._change_repo_button = QPushButton("Change Repository", self)
+        self._change_repo_button.clicked.connect(self.change_repository_requested)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -63,6 +66,7 @@ class SidebarWidget(QWidget):
         layout.addWidget(self._search)
         layout.addWidget(self._tree, 1)
         layout.addWidget(self._open_button)
+        layout.addWidget(self._change_repo_button)
     # ------------------------------------------------------------------
     # Public API methods ------------------------------------------------
     def set_repository_path(self, repo: Optional[Path]) -> None:
