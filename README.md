@@ -1,4 +1,4 @@
-# pixelPad
+# pixelpad
 
 pixelPad is a lightweight scratchpad for quick notes, snippets, and reminders. It keeps your notes as plain text on disk so you can sync or edit them with whatever tooling you prefer, while giving you a polished desktop experience built with PySide6.
 
