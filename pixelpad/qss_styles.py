@@ -50,7 +50,13 @@ def _build_stylesheet(palette: ThemePalette) -> str:
         padding: 4px;
         spacing: 4px;
     }}
-    QToolBar QToolButton {{
+    QWidget#responsiveToolBar {{
+        background-color: {palette.surface_alt};
+        border-bottom: 2px solid {palette.border};
+        padding: 4px;
+    }}
+    QToolBar QToolButton,
+    QWidget#responsiveToolBar QToolButton {{
         background-color: {palette.surface};
         border: 2px solid {palette.border};
         padding: 2px 6px;
@@ -66,17 +72,24 @@ def _build_stylesheet(palette: ThemePalette) -> str:
         padding: 0px;
         margin-right: 8px;
     }}
-    QToolBar QToolButton:hover {{
+    QToolBar QToolButton:hover,
+    QWidget#responsiveToolBar QToolButton:hover {{
         background-color: {palette.accent_alt};
         border-color: {palette.accent};
         color: {palette.highlight_text};
     }}
-    QToolBar QToolButton:checked {{
+    QToolBar QToolButton:checked,
+    QWidget#responsiveToolBar QToolButton:checked {{
         background-color: {palette.accent};
         color: {palette.highlight_text};
         border-color: {palette.accent_alt};
     }}
-
+    QWidget#responsiveToolBar QFrame#toolbarSeparator {{
+        background-color: transparent;
+        border: none;
+        border-left: 2px solid {palette.border};
+        margin: 0px 6px;
+    }}
     QStatusBar {{
         background-color: {palette.surface_alt};
         border-top: 2px solid {palette.border};

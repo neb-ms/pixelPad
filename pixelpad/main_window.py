@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSplitter,
     QStatusBar,
-    QToolBar,
 )
 
 from .editor_widget import EditorWidget
@@ -26,6 +25,7 @@ from .note_manager import (
 )
 from .sidebar_widget import SidebarWidget
 from .qss_styles import apply_theme
+from .responsive_toolbar import ResponsiveToolBar
 
 
 class PixelPadMainWindow(QMainWindow):
@@ -53,11 +53,10 @@ class PixelPadMainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
 
-        toolbar = QToolBar("Main", self)
-        toolbar.setMovable(False)
+        toolbar = ResponsiveToolBar(self)
         toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
         toolbar.setIconSize(QSize(16, 16))
-        self.addToolBar(toolbar)
+        self.setMenuWidget(toolbar)
         self._logo_label: Optional[QLabel] = None
         logo_pixmap = self._load_logo_pixmap()
         if not logo_pixmap.isNull():
