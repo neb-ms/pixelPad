@@ -1,0 +1,16 @@
+pkgbase = pixelpad
+	pkgdesc = Cross-platform scratchpad built with PySide6
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/REPLACE_ME/pixelpad
+	arch = x86_64
+	license = MIT
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-wheel
+	depends = python
+	depends = python-pyside6
+	source = pixelpad-0.1.0.tar.gz::https://github.com/REPLACE_ME/pixelpad/archive/refs/tags/v0.1.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = pixelpad
