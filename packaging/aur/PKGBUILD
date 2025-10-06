@@ -9,17 +9,17 @@ url="https://github.com/neb-ms/pixelPad"
 license=('MIT')
 depends=('python' 'pyside6')
 makedepends=('python-build' 'python-installer' 'python-wheel')
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/neb-ms/pixelPad/archive/refs/tags/v${pkgver}.tar.gz")
+source=("pixelPad-${pkgver}.tar.gz::https://github.com/neb-ms/pixelPad/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('565dae3d8e778661d3b99948c0e9c8bd183abe8f97622431bde68681fff3c0d9')
 
 prepare() {
-    cd "${srcdir}/${pkgname}-${pkgver}"
+    cd "${srcdir}/pixelPad-${pkgver}"
     # Normalize line endings if necessary, ensure scripts are executable
     find . -type f -name '*.py' -exec chmod 644 {} +
 }
 
 package() {
-    cd "${srcdir}/${pkgname}-${pkgver}"
+    cd "${srcdir}/pixelPad-${pkgver}"
 
     install -d "${pkgdir}/usr/lib/${pkgname}"
     cp -r main.py pixelpad pics fonts "${pkgdir}/usr/lib/${pkgname}/"
