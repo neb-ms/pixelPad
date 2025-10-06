@@ -4,10 +4,10 @@ import sys
 
 from pathlib import Path
 
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication
 
-from pixelpad.main_window import PixelPadMainWindow
+from pixelpad.main_window import PixelPadMainWindow, find_logo_path
 from pixelpad.note_manager import NoteManager
 from pixelpad.qss_styles import apply_theme
 
@@ -27,6 +27,9 @@ def main() -> int:
     app.setApplicationName("PixelPad")
     app.setOrganizationName("PixelPad")
     _load_embedded_fonts()
+    logo_path = find_logo_path()
+    if logo_path is not None:
+        app.setWindowIcon(QIcon(str(logo_path)))
     note_manager = NoteManager()
     apply_theme(app, note_manager.get_theme())
     window = PixelPadMainWindow(note_manager)
