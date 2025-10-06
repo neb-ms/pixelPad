@@ -105,6 +105,8 @@ class PixelPadMainWindow(QMainWindow):
         self._focus_search_shortcut.activated.connect(self._focus_sidebar_search)
 
         self._sidebar.note_selected.connect(self._handle_note_selected)
+        self._sidebar.note_move_requested.connect(self._handle_note_move_requested)
+        self._sidebar.notebook_move_requested.connect(self._handle_notebook_move_requested)
         self._sidebar.open_repository_requested.connect(self._open_repository)
         self._sidebar.change_repository_requested.connect(self._change_repository)
         self._sidebar.selection_changed.connect(self._refresh_actions)
@@ -476,6 +478,143 @@ class PixelPadMainWindow(QMainWindow):
             self._sidebar.set_current_note_path(self._current_note)
             return
         self._load_note(note)
+
+    def _handle_note_move_requested(self, note: Path, target_dir: Path) -> None:
+        repo = self._note_manager.get_repository_path()
+        if repo is None:
+            return
+        try:
+            repo = repo.resolve()
+        except FileNotFoundError:
+            pass
+        try:
+            note_path = Path(note).resolve()
+        except FileNotFoundError:
+            note_path = Path(note)
+        try:
+            target_path = Path(target_dir).resolve()
+        except FileNotFoundError:
+            target_path = Path(target_dir)
+        if note_path.parent == target_path:
+            return
+        try:
+            note_path.relative_to(repo)
+            target_path.relative_to(repo)
+        except ValueError:
+            QMessageBox.warning(self, "Cannot Move Note", "Target notebook is outside the repository.")
+            return
+        is_current = False
+        if self._current_note is not None:
+            try:
+                is_current = note_path.resolve() == self._current_note.resolve()
+            except FileNotFoundError:
+                is_current = note_path == self._current_note
+        if is_current:
+            if not self._auto_save_current_note():
+                self._sidebar.set_current_note_path(self._current_note)
+                return
+            note_path = self._current_note
+        destination = target_path / note_path.name
+        try:
+            moved_path = self._note_manager.rename_note(note_path, destination)
+        except (UnsupportedNoteExtensionError, ValueError, FileExistsError, FileNotFoundError, IsADirectoryError) as error:
+            QMessageBox.warning(self, "Cannot Move Note", str(error))
+            self._refresh_recent_notes()
+            return
+        if is_current:
+            self._current_note = moved_path
+            self._editor.document().setModified(False)
+            self._update_window_title()
+            self._update_status_message()
+
+        try:
+            message_path = moved_path.relative_to(repo).as_posix()
+        except ValueError:
+            message_path = moved_path.as_posix()
+
+        def finalize_move() -> None:
+            self._refresh_recent_notes()
+            self._sidebar.set_current_note_path(moved_path)
+            self.statusBar().showMessage(f"Moved note to {message_path}", 4000)
+
+        QTimer.singleShot(0, finalize_move)
+
+    def _handle_notebook_move_requested(self, notebook: Path, target_dir: Path) -> None:
+        repo = self._note_manager.get_repository_path()
+        if repo is None:
+            return
+        try:
+            repo_resolved = repo.resolve()
+        except FileNotFoundError:
+            repo_resolved = repo
+
+        try:
+            notebook_path = Path(notebook).resolve()
+        except FileNotFoundError:
+            notebook_path = Path(notebook)
+        try:
+            target_path = Path(target_dir).resolve()
+        except FileNotFoundError:
+            target_path = Path(target_dir)
+
+        try:
+            notebook_path.relative_to(repo_resolved)
+            target_path.relative_to(repo_resolved)
+        except ValueError:
+            QMessageBox.warning(self, "Cannot Move Notebook", "Target notebook is outside the repository.")
+            return
+
+        if notebook_path == repo_resolved:
+            QMessageBox.warning(self, "Cannot Move Notebook", "The repository root cannot be moved.")
+            return
+        if target_path == notebook_path or target_path == notebook_path.parent:
+            return
+        try:
+            target_path.relative_to(notebook_path)
+        except ValueError:
+            pass
+        else:
+            QMessageBox.warning(self, "Cannot Move Notebook", "Cannot move a notebook into one of its descendants.")
+            return
+
+        old_notebook_path = notebook_path
+
+        try:
+            moved_path = self._note_manager.move_notebook(notebook_path, target_path)
+        except (ValueError, FileExistsError, FileNotFoundError, NotADirectoryError, PermissionError, OSError) as error:
+            QMessageBox.warning(self, "Cannot Move Notebook", str(error))
+            self._refresh_recent_notes()
+            return
+
+        current_note = self._current_note
+        if current_note is not None:
+            try:
+                current_resolved = current_note.resolve()
+            except FileNotFoundError:
+                current_resolved = current_note
+            try:
+                relative_note_path = current_resolved.relative_to(old_notebook_path)
+            except ValueError:
+                relative_note_path = None
+            if relative_note_path is not None:
+                new_note_path = moved_path / relative_note_path
+                self._current_note = new_note_path
+                self._update_window_title()
+                self._update_status_message()
+
+        try:
+            message_path = moved_path.relative_to(repo_resolved).as_posix()
+        except ValueError:
+            message_path = moved_path.as_posix()
+
+        def finalize_move() -> None:
+            self._refresh_recent_notes()
+            self._sidebar.set_current_notebook_path(moved_path)
+            if self._current_note and moved_path in self._current_note.parents:
+                self._sidebar.set_current_note_path(self._current_note)
+            self.statusBar().showMessage(f"Moved notebook to {message_path}", 4000)
+
+        QTimer.singleShot(0, finalize_move)
 
     def _load_note(self, note: Path) -> None:
         try:

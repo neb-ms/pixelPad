@@ -18,6 +18,7 @@ class ThemePalette:
     surface: str
     surface_alt: str
     border: str
+    divider: str
     text: str
     text_muted: str
     accent: str
@@ -203,7 +204,7 @@ def _build_stylesheet(palette: ThemePalette) -> str:
     }}
 
     QSplitter::handle {{
-        background-color: {palette.border};
+        background-color: {palette.divider};
     }}
 
     QMenu {{
@@ -261,6 +262,7 @@ THEMES: Dict[str, ThemePalette] = {
         surface="#000000",
         surface_alt="#000000",
         border="#000000",
+        divider="#2a2a2a",
         text="#ccffd7",
         text_muted="#5c8b84",
         accent="#00ff90",
@@ -275,6 +277,7 @@ THEMES: Dict[str, ThemePalette] = {
         surface="#edf3ff",
         surface_alt="#d8e4ff",
         border="#9bb2d1",
+        divider="#9bb2d1",
         text="#0f1a28",
         text_muted="#4d5f78",
         accent="#1d8df0",

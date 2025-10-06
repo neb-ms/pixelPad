@@ -493,6 +493,49 @@ class NoteManager:
         self._reassign_notebook_tree_colors(notebook_path, target)
         return target
 
+    def move_notebook(
+        self,
+        notebook: Path | str,
+        destination: Path | str,
+    ) -> Path:
+        repo = self._ensure_repository().resolve()
+        notebook_path = self._resolve_directory_path(notebook).resolve()
+        if notebook_path == repo:
+            raise ValueError("Cannot move the repository root notebook.")
+
+        destination_path = Path(destination)
+        if not destination_path.is_absolute():
+            destination_path = repo / destination_path
+        destination_path = destination_path.expanduser().resolve()
+
+        try:
+            notebook_path.relative_to(repo)
+            destination_path.relative_to(repo)
+        except ValueError as exc:
+            raise ValueError("Destination notebook must remain within the configured repository.") from exc
+
+        if not destination_path.exists():
+            destination_path.mkdir(parents=True, exist_ok=True)
+        if not destination_path.is_dir():
+            raise NotADirectoryError(f"Destination is not a notebook directory: {destination_path}")
+
+        try:
+            destination_path.relative_to(notebook_path)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("Cannot move a notebook inside itself or its descendants.")
+
+        target = (destination_path / notebook_path.name).resolve()
+        if target == notebook_path:
+            return target
+        if target.exists():
+            raise FileExistsError(f"Target notebook already exists: {target}")
+
+        notebook_path.rename(target)
+        self._reassign_notebook_tree_colors(notebook_path, target)
+        return target
+
     def delete_notebook(
         self,
         notebook: Path | str,
@@ -540,10 +583,11 @@ class NoteManager:
         if not note_path.exists():
             raise FileNotFoundError(f"Cannot rename missing note: {note_path}")
         repo = self._ensure_repository().resolve()
-        target = Path(new_name)
-        if not target.is_absolute():
-            target = repo / target
-        target = target.expanduser().resolve(strict=False)
+        target_candidate = Path(new_name)
+        if target_candidate.is_absolute():
+            target = target_candidate.expanduser().resolve(strict=False)
+        else:
+            target = (note_path.parent / target_candidate).resolve(strict=False)
         try:
             target.relative_to(repo)
         except ValueError as exc:
